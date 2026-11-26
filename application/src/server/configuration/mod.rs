@@ -371,6 +371,9 @@ nestify::nest! {
             pub default: Option<#[derive(ToSchema, Deserialize, Serialize, PartialEq, Eq)] pub struct ServerConfigurationAllocationsDefault {
                 pub ip: compact_str::CompactString,
                 pub port: u16,
+                /// Public address the panel shows for this allocation, if one is set.
+                #[serde(default)]
+                pub ip_alias: Option<compact_str::CompactString>,
             }>,
 
             #[serde(default, deserialize_with = "crate::deserialize::deserialize_defaultable")]

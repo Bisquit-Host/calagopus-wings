@@ -399,6 +399,12 @@ impl ServerConfigurationFile {
 
         match parts.get(2) {
             Some(&"ip") => Ok(default.map(|d| d.ip.clone()).unwrap_or_default()),
+            Some(&"ip_alias") => Ok(default
+                .map(|d| match &d.ip_alias {
+                    Some(alias) if !alias.is_empty() => alias.clone(),
+                    _ => d.ip.clone(),
+                })
+                .unwrap_or_default()),
             Some(&"port") => Ok(default
                 .map(|d| d.port.to_compact_string())
                 .unwrap_or_default()),
@@ -693,6 +699,7 @@ mod tests {
             config.allocations.default = Some(ServerConfigurationAllocationsDefault {
                 ip: "10.0.0.4".into(),
                 port: 25565,
+                ip_alias: None,
             });
         };
 
@@ -707,6 +714,35 @@ mod tests {
         assert_eq!(
             resolve_with("{{server.allocations.default.port}}", setup),
             "25565"
+        );
+    }
+
+    #[test]
+    fn ip_alias_falls_back_to_ip() {
+        let with_alias = |alias: Option<&str>| {
+            move |config: &mut ServerConfiguration| {
+                config.allocations.default = Some(ServerConfigurationAllocationsDefault {
+                    ip: "0.0.0.0".into(),
+                    port: 19132,
+                    ip_alias: alias.map(Into::into),
+                });
+            }
+        };
+
+        assert_eq!(
+            resolve_with(
+                "{{server.build.default.ip_alias}}",
+                with_alias(Some("5.231.75.24"))
+            ),
+            "5.231.75.24"
+        );
+        assert_eq!(
+            resolve_with("{{server.build.default.ip_alias}}", with_alias(None)),
+            "0.0.0.0"
+        );
+        assert_eq!(
+            resolve_with("{{server.build.default.ip_alias}}", with_alias(Some(""))),
+            "0.0.0.0"
         );
     }
 

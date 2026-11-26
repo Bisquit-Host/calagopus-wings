@@ -1,0 +1,85 @@
+name: Bisquit Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  BIN_NAME: wings-rs
+  TARGET: x86_64-unknown-linux-gnu
+  GHCR_IMAGE: ghcr.io/bisquit-host/calagopus-wings
+
+jobs:
+  build:
+    name: Build x86_64 binary and image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
+        with:
+          toolchain: stable
+          target: ${{ env.TARGET }}
+          cache-key: ${{ env.TARGET }}
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross --rev 8c1a8aa4b661711f4b7b6ac07c2e8929ce2f7d27 --locked
+        env:
+          CARGO_BUILD_WARNINGS: allow
+
+      - name: Run cargo test
+        run: cross test --release --target "$TARGET"
+        env:
+          JEMALLOC_SYS_WITH_LG_PAGE: 12
+
+      # Self-upgrades look for releases in this fork, so they never swap in an unpatched upstream build.
+      - name: Build release binary
+        run: |
+          RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-Wl,--icf=all -C link-arg=-Wl,-z,pack-relative-relocs" \
+          cross build --release --target "$TARGET"
+        env:
+          JEMALLOC_SYS_WITH_LG_PAGE: 12
+          WINGS_UPGRADE_REPOSITORY: ${{ github.repository }}
+
+      - name: Prepare binary
+        run: |
+          mkdir -p dist .docker/amd64
+          cp "target/$TARGET/release/$BIN_NAME" "dist/$BIN_NAME-x86_64-linux"
+          cp "target/$TARGET/release/$BIN_NAME" .docker/amd64/calagopus-wings
+          chmod +x dist/* .docker/amd64/calagopus-wings
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.BIN_NAME }}-x86_64-linux
+          path: dist/${{ env.BIN_NAME }}-x86_64-linux
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.GHCR_IMAGE }}:latest
+            ${{ env.GHCR_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
