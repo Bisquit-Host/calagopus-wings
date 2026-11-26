@@ -719,31 +719,19 @@ mod tests {
 
     #[test]
     fn ip_alias_falls_back_to_ip() {
-        let with_alias = |alias: Option<&str>| {
-            move |config: &mut ServerConfiguration| {
+        let resolve_alias = |alias: Option<&str>| {
+            resolve_with("{{server.build.default.ip_alias}}", |config| {
                 config.allocations.default = Some(ServerConfigurationAllocationsDefault {
                     ip: "0.0.0.0".into(),
                     port: 19132,
                     ip_alias: alias.map(Into::into),
                 });
-            }
+            })
         };
 
-        assert_eq!(
-            resolve_with(
-                "{{server.build.default.ip_alias}}",
-                with_alias(Some("5.231.75.24"))
-            ),
-            "5.231.75.24"
-        );
-        assert_eq!(
-            resolve_with("{{server.build.default.ip_alias}}", with_alias(None)),
-            "0.0.0.0"
-        );
-        assert_eq!(
-            resolve_with("{{server.build.default.ip_alias}}", with_alias(Some(""))),
-            "0.0.0.0"
-        );
+        assert_eq!(resolve_alias(Some("5.231.75.24")), "5.231.75.24");
+        assert_eq!(resolve_alias(None), "0.0.0.0");
+        assert_eq!(resolve_alias(Some("")), "0.0.0.0");
     }
 
     #[test]
